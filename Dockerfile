@@ -16,21 +16,11 @@ COPY package.json package-lock.json ./
 # 2) Process Dependencies Stage
 # ============================
 FROM dependencies AS deps-processed
-# Pacote local referenciado em package.json como file:./map_component
-COPY map_component/package.json map_component/package-lock.json ./map_component/
-
-# Instala dependências do map_component (lock file versionado)
-RUN --mount=type=cache,target=/root/.npm \
-    npm ci --prefix map_component
-
-# Instalar dependências com cache otimizado
+# map_component is consumed as a published npm dependency
+# (@rural-environmental-registry/map_component in package.json, resolved from
+# the npm registry via package-lock.json). No local copy/build is needed.
 RUN --mount=type=cache,target=/root/.npm \
     npm ci --ignore-scripts
-
-COPY ./map_component ./map_component
-
-# Build da biblioteca de mapa (frontend consome dist/index.mjs)
-RUN npm run build --prefix map_component
 
 # ============================
 # 3) Build Stage
@@ -39,16 +29,13 @@ FROM deps-processed AS build
 COPY . .
 ARG APP_VERSION
 ARG VITE_BASE_URL=/
-ARG VITE_DPG_URL
-ARG VITE_AUTH_MODULE_URL
-ARG VITE_CALCULATION_ENGINE_BASE_URL
-ARG VITE_GEOSERVER_URL
 ENV APP_VERSION=$APP_VERSION
 ENV VITE_BASE_URL=$VITE_BASE_URL
-ENV VITE_DPG_URL=$VITE_DPG_URL
-ENV VITE_AUTH_MODULE_URL=$VITE_AUTH_MODULE_URL
-ENV VITE_CALCULATION_ENGINE_BASE_URL=$VITE_CALCULATION_ENGINE_BASE_URL
-ENV VITE_GEOSERVER_URL=$VITE_GEOSERVER_URL
+# VITE_DPG_URL, VITE_AUTH_MODULE_URL, VITE_CALCULATION_ENGINE_BASE_URL and
+# VITE_GEOSERVER_URL are intentionally NOT set as ENV here: they are read from
+# the versioned .env.production so that a single source of truth drives the
+# build. Setting them as ENV would override .env.production and reintroduce
+# wrong values (e.g. /geoserver instead of /geoserver/wms).
 RUN npm run build-only
 RUN echo "$APP_VERSION" > dist/version.txt
 RUN sh scripts/generate-config.sh
